@@ -1,58 +1,110 @@
-const fs = require('fs').promises;
+const fs = require('fs');
 const xml2js = require('xml2js');
 const parser = new xml2js.Parser();
 
-// get input and output directory as params from command line
-
-
-fs.readFile('capture.svg', 'utf-8').then(xml => {
-  return new parser.parseStringPromise(xml);
-}).then(obj => {
-  // modify svg
-  const width = obj.svg.$.viewBox.split(' ')[2];
-  setWidthOnSvg(obj.svg.$);
-  removeFillAttributeFromPath(obj.svg.path);
-  // build into new svg
-  const builder = new xml2js.Builder();
-  const xml = builder.buildObject(obj);
-  // build into vue template
-  const template = convertSvgToVue(xml, width, 'Capture');
-  fs.writeFile('IconCapture.vue', template);
-}).catch(error => {
-  console.log('error', error);
-})
-
-/**
- * remove height attribute from svg
- */
-const setWidthOnSvg = (svg) => {
-  delete svg.height;
-  svg.width = 'none';
+// TODO: get input and output directory as params from command line
+const dir = './input/';
+const filenames = fs.readdirSync(dir);
+if (!filenames.length) {
+  console.error('No files found');
+  return;
 }
 
+const processFileName = (filename) => {
+  const prefix = filename.split('.')[0].toLowerCase(); // remove .svg extension
+  const processedFileName = prefix.split('-').map(str => {
+    const capitalized = str[0].toUpperCase().concat(str.substr(1));
+    return capitalized;
+  }).join('');
+  return processedFileName;
+}
+
+const tags = new Set();
+
+// file name validation
+filenames.forEach(async filename => {
+  if (!/^[a-zA-Z-]+.svg/.test(filename)) {
+    console.error(`${filename}: File name is invalid. Should only contain letters and -`);
+    return;
+  }
+  console.log(`start processing ${filename}`);
+  const processedFileName = processFileName(filename);
+  const xml = fs.readFileSync(dir.concat(filename), 'utf-8');
+  const obj = await new parser.parseStringPromise(xml);
+
+  // modify svg
+  const width = obj.svg.$.viewBox.split(' ')[2];
+  cleanSourceSvgFile(obj.svg);
+  // build into new svg
+  const builder = new xml2js.Builder();
+  const newXml = builder.buildObject(obj);
+  // build into vue template
+  const template = convertSvgToVue(newXml, width, processedFileName);
+  fs.writeFileSync(`output/Icon${processedFileName}.vue`, template);
+})
+
+const cleanSourceSvgFile = (svg) => {
+  // remove unnecessary title tag
+  if (svg.title) delete svg.title;
+
+  // reset width/height/fill
+  delete svg.$.height;
+  svg.$.width = 'none';
+  svg.$.fill = 'none';
+
+  // remove style attribute
+  if (svg.$.style) delete svg.$.style;
+
+  // 1) remove fill attribute from all descendant tags
+  // 2) collect different descendant tags for indentation
+  tags.add('svg');
+  const traverseSvg = (obj) => {
+    for(let key in obj) {
+      if (key === '$') continue;
+      // collect tag
+      tags.add(key);
+
+      const array = obj[key];
+      for(let ele of array) {
+        if (ele.$?.fill) delete ele.$.fill;
+        traverseSvg(ele);
+      }
+    }
+  }
+  traverseSvg(svg);
+}
 
 /**
- * remove fill attribute from path
+ * format svg
  */
-const removeFillAttributeFromPath = (paths) => {
-  paths.forEach(path => {
-    delete path.$.fill;
+const formatSvg = (svg) => {
+  // add width/fill variables to svg
+  let s = svg;
+  // const xmlHead = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  if (/<?xml/.test(s)) {
+    const lines = s.split('\n');
+    lines.shift();
+    s = lines.join('\n');
+  }
+
+  s = s.replace('width="none"', ':width="width"');
+  s = s.replace('fill="none"', ':fill="fill"');
+
+  // adjust indentation for svg and path
+  tags.forEach(tag => {
+    // indent opening tag
+    s = s.replace(/<${tag}/ig, `\t<${tag}`);
+    // indent closing tag
+    s = s.replace(/<\/${tag}/ig, `\t<\/${tag}`);
   })
+  return s;
 }
 
 /**
  * convert svg to vue template
  */
 const convertSvgToVue = (svg, width, name) => {
-  // add width/fill variables to svg
-  let processedSvg = svg;
-  const xmlHead = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
-  processedSvg = processedSvg.replace(xmlHead, '');
-  processedSvg = processedSvg.replace('width="none"', ':width="width"');
-  processedSvg = processedSvg.replace('fill="none"', ':fill="fill"');
-  // adjust indentation for svg and path
-
-  const template = `<template>\n${processedSvg}\n</template>`;
+  const template = `<template>\n${formatSvg(svg)}\n</template>`;
   const script = `\n<script lang='ts'>
   import { defineComponent } from 'vue';
   export default defineComponent({
@@ -70,5 +122,6 @@ const convertSvgToVue = (svg, width, name) => {
       }
     }
   })\n</script>`
-  return template.concat(script);
+  const templateStr = template.concat(script);
+  return templateStr;
 }
