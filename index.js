@@ -2,13 +2,28 @@ const fs = require('fs');
 const xml2js = require('xml2js');
 const parser = new xml2js.Parser();
 
-// TODO: get input and output directory as params from command line
-const dir = './input/';
-const filenames = fs.readdirSync(dir);
-if (!filenames.length) {
-  console.error('No files found');
-  return;
+let inputDir = './input'; // input directory by default
+let outputDir = './output';
+
+const arguments = process.argv;
+if (arguments.length === 4) {
+  inputDir = arguments[2];
+  outputDir = arguments[3];
 }
+
+const tags = new Set();
+let filenames;
+try {
+  filenames = fs.readdirSync(inputDir);
+  if (!filenames.length) {
+    console.error('No files found');
+    return;
+  }
+} catch(error) {
+  console.log(`${inputDir} doesn't exist`);
+}
+
+if (!filenames) return;
 
 const processFileName = (filename) => {
   const prefix = filename.split('.')[0].toLowerCase(); // remove .svg extension
@@ -19,17 +34,15 @@ const processFileName = (filename) => {
   return processedFileName;
 }
 
-const tags = new Set();
-
 // file name validation
 filenames.forEach(async filename => {
-  if (!/^[a-zA-Z-]+.svg/.test(filename)) {
-    console.error(`${filename}: File name is invalid. Should only contain letters and -`);
+  if (!/^[a-zA-Z-]+.svg$/.test(filename)) {
+    console.error(`${filename}: Invalid svg file. File name should only contain letters and -`);
     return;
   }
   console.log(`start processing ${filename}`);
   const processedFileName = processFileName(filename);
-  const xml = fs.readFileSync(dir.concat(filename), 'utf-8');
+  const xml = fs.readFileSync(`${inputDir}/${filename}`, 'utf-8');
   const obj = await new parser.parseStringPromise(xml);
 
   // modify svg
@@ -40,7 +53,7 @@ filenames.forEach(async filename => {
   const newXml = builder.buildObject(obj);
   // build into vue template
   const template = convertSvgToVue(newXml, width, processedFileName);
-  fs.writeFileSync(`output/Icon${processedFileName}.vue`, template);
+  fs.writeFileSync(`${outputDir}/Icon${processedFileName}.vue`, template);
 })
 
 const cleanSourceSvgFile = (svg) => {
@@ -80,7 +93,6 @@ const cleanSourceSvgFile = (svg) => {
 const formatSvg = (svg) => {
   // add width/fill variables to svg
   let s = svg;
-  // const xmlHead = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   if (/<?xml/.test(s)) {
     const lines = s.split('\n');
     lines.shift();
