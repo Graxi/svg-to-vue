@@ -1,3 +1,4 @@
+const { optimize } = require('svgo');
 const fs = require('fs');
 const xml2js = require('xml2js');
 const parser = new xml2js.Parser();
@@ -42,11 +43,12 @@ filenames.forEach(async filename => {
   }
   console.log(`start processing ${filename}`);
   const processedFileName = processFileName(filename);
-  const xml = fs.readFileSync(`${inputDir}/${filename}`, 'utf-8');
-  const obj = await new parser.parseStringPromise(xml);
+  const svgString = fs.readFileSync(`${inputDir}/${filename}`, 'utf-8');
+  const optimizedSvg = optimize(svgString); // optimize svg
+  const obj = await new parser.parseStringPromise(optimizedSvg.data);
 
   // modify svg
-  const width = obj.svg.$.viewBox.split(' ')[2];
+  const width = optimizedSvg.info.width;
   cleanSourceSvgFile(obj.svg);
   // build into new svg
   const builder = new xml2js.Builder();
@@ -57,9 +59,6 @@ filenames.forEach(async filename => {
 })
 
 const cleanSourceSvgFile = (svg) => {
-  // remove unnecessary title tag
-  if (svg.title) delete svg.title;
-
   // reset width/height/fill
   delete svg.$.height;
   svg.$.width = 'none';
