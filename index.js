@@ -49,7 +49,7 @@ filenames.forEach(async filename => {
 
   // modify svg
   const width = optimizedSvg.info.width;
-  cleanSourceSvgFile(obj.svg);
+  cleanSourceSvgFile(obj.svg, width);
   // build into new svg
   const builder = new xml2js.Builder();
   const newXml = builder.buildObject(obj);
@@ -58,11 +58,12 @@ filenames.forEach(async filename => {
   fs.writeFileSync(`${outputDir}/Icon${processedFileName}.vue`, template);
 })
 
-const cleanSourceSvgFile = (svg) => {
+const cleanSourceSvgFile = (svg, size) => {
   // reset width/height/fill
   delete svg.$.height;
   svg.$.width = 'none';
   svg.$.fill = 'none';
+  svg.$.viewBox = `0 0 ${size} ${size}`;
 
   // remove style attribute
   if (svg.$.style) delete svg.$.style;
