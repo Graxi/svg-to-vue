@@ -121,15 +121,21 @@ const convertSvgToVue = (svg, width, name) => {
   export default defineComponent({
     name: 'Icon${name}',
     props: {
-      size: Number,
-      color: String
+      size: {
+        type: Number,
+        default: ${width}
+      },
+      color: {
+        type: String,
+        default: '#000'
+      }
     },
     computed: {
       width: function() {
-        return this.size || ${width}
+        return this.size
       },
       fill: function() {
-        return this.color || '#FFF'
+        return this.color
       }
     }
   })\n</script>`
